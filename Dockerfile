@@ -1,4 +1,6 @@
-FROM node:12.10.0-alpine
+FROM quay.io/cdis/ubuntu:18.04
+
+RUN curl -sL https://deb.nodesource.com/setup_14.x | bash -
 
 # The base node image sets a very verbose log level.
 ENV NPM_CONFIG_LOGLEVEL info
