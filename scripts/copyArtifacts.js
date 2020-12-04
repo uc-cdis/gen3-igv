@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 const fs = require('fs-extra');
+const pkg = require('../package.json');
 
 fs.copySync(__dirname + '/../igvwebConfig.js', __dirname + '/../dist/igvwebConfig.js');
 fs.copySync(__dirname + '/../css/app.css', __dirname + '/../dist/css/app.css');
@@ -21,7 +22,7 @@ let written = false;
 for (let line of lines) {
 
     if(!written && line.includes("<script") && line.includes("module") && line.includes("app.js")) {
-        fs.writeSync(fd, '\t<script src="./app_bundle.js"></script>\n', null, 'utf-8');
+        fs.writeSync(fd, '\t<script src=./app_bundle-' + pkg.version + '.js></script>\n', null, 'utf-8');
         written = true;
     } else {
         fs.writeSync(fd, line + '\n', null, 'utf-8')

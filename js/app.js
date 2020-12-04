@@ -20,12 +20,178 @@
  * THE SOFTWARE.
  *
  */
-import {main} from './main.js';
 
-// To import igv as a module (1) uncomment the import below, and "window.igv=igv", (2) comment out the igv script include in the html
-//import igv from "http://localhost/igv-web/dist/igv.esm.js";
+import {GoogleAuth} from '../node_modules/igv-utils/src/index.js';
+import { AlertSingleton, createSessionWidgets, createTrackWidgetsWithTrackRegistry, dropboxButtonImageBase64, dropboxDropdownItem, EventBus, googleDriveButtonImageBase64, googleDriveDropdownItem } from '../node_modules/igv-widgets/dist/igv-widgets.js'
+import Globals from "./globals.js"
+import {creatGenomeWidgets, genomeWidgetConfigurator, initializeGenomeWidgets} from './genomeWidgets.js';
+import {createShareWidgets, shareWidgetConfigurator} from './shareWidgets.js';
+import {sessionURL} from './shareHelper.js';
+import {createSVGWidget} from './svgWidget.js';
+import GtexUtils from "./gtexUtils.js";
+import version from "./version.js";
 
-$(document).ready(() => {
-   // window.igv = igv;
-    main($('#igv-app-container'), igvwebConfig);
-});
+$(document).ready(async () => main($('#igv-app-container'), igvwebConfig));
+
+let googleEnabled = false;
+
+async function main($container, config) {
+
+    AlertSingleton.init($container.get(0))
+
+    $('#igv-app-version').text(`IGV-Web app version ${version()}`)
+    $('#igv-igvjs-version').text(`igv.js version ${igv.version()}`)
+
+    const enableGoogle = (config.clientId  || config.apiKey) &&
+        (window.location.protocol === "https:" || window.location.host === "localhost");
+
+    if (enableGoogle) {
+        try {
+            await GoogleAuth.init({
+                client_id: config.clientId,
+                apiKey: config.apiKey,
+                scope: 'https://www.googleapis.com/auth/userinfo.profile',
+            })
+            await GoogleAuth.signOut();   // The await is important !!!
+            googleEnabled = true;
+        } catch (e) {
+            console.error(e);
+            AlertSingleton.present(e.message)
+        }
+    }
+
+    // Load genomes for use by igv.js and webapp
+    if (config.genomes) {
+        let tmp = await getGenomesArray(config.genomes);
+        config.genomes = tmp;
+        config.igvConfig.genomes = tmp;
+    }
+
+    const igvConfig = config.igvConfig;
+
+    if(config.restoreLastGenome) {
+        const lastGenomeId = localStorage.getItem("genomeID");
+        if (lastGenomeId && lastGenomeId !== igvConfig.genome) {
+            igvConfig.genome = lastGenomeId;
+            igvConfig.tracks = [];
+        }
+    }
+
+    const browser = await igv.createBrowser($container.get(0), igvConfig);
+
+    if (browser) {
+        Globals.browser = browser;
+        await initializationHelper(browser, $container, config);
+    }
+}
+
+async function initializationHelper(browser, $container, options) {
+
+    ['track', 'genome'].forEach(str => {
+        let imgElement;
+
+        imgElement = document.querySelector(`img#igv-app-${str}-dropbox-button-image`);
+        imgElement.src = `data:image/svg+xml;base64,${dropboxButtonImageBase64()}`;
+
+        imgElement = document.querySelector(`img#igv-app-${str}-google-drive-button-image`);
+        imgElement.src = `data:image/svg+xml;base64,${googleDriveButtonImageBase64()}`;
+    })
+
+    // Session - Dropbox and Google Drive buttons
+    $('div#igv-session-dropdown-menu > :nth-child(1)').after(dropboxDropdownItem('igv-app-dropdown-dropbox-session-file-button'));
+    $('div#igv-session-dropdown-menu > :nth-child(2)').after(googleDriveDropdownItem('igv-app-dropdown-google-drive-session-file-button'));
+
+    creatGenomeWidgets(genomeWidgetConfigurator(googleEnabled))
+    await initializeGenomeWidgets(browser, options.genomes, $('#igv-app-genome-dropdown-menu'))
+
+    const $main = $('#igv-main')
+
+    createTrackWidgetsWithTrackRegistry($main,
+        $('#igv-app-track-dropdown-menu'),
+        $('#igv-app-dropdown-local-track-file-input'),
+        $('#igv-app-dropdown-dropbox-track-file-button'),
+        googleEnabled,
+        $('#igv-app-dropdown-google-drive-track-file-button'),
+        ['igv-app-encode-signal-modal', 'igv-app-encode-others-modal'],
+        'igv-app-track-from-url-modal',
+        'igv-app-track-select-modal',
+        GtexUtils,
+        options.trackRegistryFile,
+        async configurations => await browser.loadTrackList(configurations));
+
+    $('#igv-app-session-save-button').on('click', () => {
+
+        let json = undefined
+        try {
+            json = browser.toJSON()
+        } catch (e) {
+            AlertSingleton.present(e.message)
+        }
+
+        if (json) {
+            $('#igv-app-session-save-modal').modal('show')
+        }
+
+    })
+
+    createSessionWidgets($main,
+        igv.xhr,
+        'igv-webapp',
+        'igv-app-dropdown-local-session-file-input',
+        'igv-app-dropdown-dropbox-session-file-button',
+        'igv-app-dropdown-google-drive-session-file-button',
+        'igv-app-session-url-modal',
+        'igv-app-session-save-modal',
+        googleEnabled,
+        async config => {await browser.loadSession(config)}, () => browser.toJSON());
+
+    createSVGWidget({browser, $saveModal: $('#igv-app-svg-save-modal')})
+
+    createShareWidgets(shareWidgetConfigurator(browser, $container, options));
+
+    createAppBookmarkHandler($('#igv-app-bookmark-button'));
+
+    EventBus.globalBus.post({type: "DidChangeGenome", data: {genomeID: browser.genome.id}});
+}
+
+function createAppBookmarkHandler($bookmark_button) {
+
+    $bookmark_button.on('click', (e) => {
+
+        let url = undefined
+        try {
+            url = sessionURL()
+        } catch (e) {
+            AlertSingleton.present(e.message)
+        }
+
+        if (url) {
+            window.history.pushState({}, "IGV", url);
+
+            const str = (/Mac/i.test(navigator.userAgent) ? 'Cmd' : 'Ctrl');
+            const blurb = 'A bookmark URL has been created. Press ' + str + '+D to save.';
+            alert(blurb);
+        }
+    })
+}
+
+async function getGenomesArray(genomes) {
+
+    if (undefined === genomes) {
+        return undefined;
+    }
+    if (Array.isArray(genomes)) {
+        return genomes;
+    } else {
+
+        let response = undefined;
+        try {
+            response = await fetch(genomes);
+            return response.json();
+        } catch (e) {
+            AlertSingleton.present(e.message);
+        }
+    }
+}
+
+export {main}
