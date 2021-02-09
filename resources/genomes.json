@@ -1,6 +1,6 @@
 [
   {
-    "id": "ASM985889v3",
+    "id": "Sars-CoV-2",
     "name": "Sars-CoV-2 (ASM985889v3)",
     "fastaURL": "https://s3.amazonaws.com/igv.org.genomes/covid_ASM985889v3/GCF_009858895.2_ASM985889v3_genomic.fna",
     "indexURL": "https://s3.amazonaws.com/igv.org.genomes/covid_ASM985889v3/GCF_009858895.2_ASM985889v3_genomic.fna.fai",

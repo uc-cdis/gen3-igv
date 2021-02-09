@@ -19,7 +19,7 @@ var igvwebConfig = {
         {
             queryParametersSupported: true,
             showChromosomeWidget: true,
-            genome: "ASM985889v3",
+            genome: "Sars-CoV-2",
             showSVGButton: false,
             tracks: [
                 // TODO -- add default tracks here.  See github.com/igvteam/igv.js/wiki for details
